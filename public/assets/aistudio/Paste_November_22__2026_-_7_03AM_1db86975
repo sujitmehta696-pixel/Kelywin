@@ -1,0 +1,895 @@
+# FamGateway â€” Developer Documentation & API Reference (v2.0)
+
+> India's 100% Free, Non-Custodial Automated UPI Payment Gateway Platform for Developers, Creators, and Businesses.  
+> Official Website: https://famgateway.in | API Version: 2.0 | Ministry of MSME Registration: `UDYAM-BR-28-0050000` | Founded by Aryan Gupta (@aryanispe)
+
+---
+
+## Table of Contents
+- [All-in-One API Endpoints Quick Reference](#all-in-one-api-endpoints-quick-reference)
+- [0. Base URL & Authentication](#0-base-url--authentication)
+- [1. Prerequisites (Connect FamPay Account)](#1-prerequisites-connect-fampay-account)
+- [2. Create Order & Generate UPI QR](#2-create-order--generate-upi-qr)
+- [3. Check Order Status & Polling](#3-check-order-status--polling)
+- [4. Universal Architecture & Reference Implementations](#4-universal-architecture--reference-implementations)
+   - [A. Python SDK Quickstart (`pip install famgateway`)](#python-sdk-quickstart-pip-install-famgateway)
+   - [B. Web Backend: Node.js (Express)](#b-web-backend-nodejs--express)
+   - [C. Web Backend: Python (FastAPI)](#c-web-backend-python--fastapi)
+   - [D. Telegram Bot Implementation](#d-telegram-bot-implementation)
+   - [E. WhatsApp Payment Bot Implementation](#e-whatsapp-payment-bot-implementation)
+   - [Common Integration Pitfalls](#common-integration-mistakes--pitfalls-to-avoid)
+- [5. Payment Links (Shareable URLs)](#5-payment-links-shareable-urls)
+- [6. Webhooks & Multiple Endpoints (HMAC-SHA256 Signatures)](#6-webhooks--multiple-endpoints-hmac-sha256-signatures)
+- [7. Automated PDF Receipts & Invoicing](#7-automated-pdf-receipts--invoicing)
+- [8. HTTP Status & Error Codes](#8-http-status--error-codes)
+- [9. Official Open-Source SDKs, Modules & Ecosystem](#9-official-open-source-sdks-modules--ecosystem)
+   - [A. Official Python SDK (`famgateway`)](#a-official-python-sdk-famgateway)
+   - [B. Official PHP SDK (`aryanispe/famgateway-php-sdk`)](#b-official-php-sdk-aryanispefamgateway-php-sdk)
+   - [C. Official WHMCS Payment Gateway Module](#c-official-whmcs-payment-gateway-module)
+   - [D. Reference Payment Bot Implementations](#d-reference-payment-bot-implementations)
+   - [E. OpenAPI 3.1.0 Specification & Postman](#e-openapi-310-specification--postman-collection)
+- [10. Architecture Philosophy & Frequently Asked Questions (FAQs)](#10-architecture-philosophy--frequently-asked-questions-faqs)
+
+---
+
+## All-in-One API Endpoints Quick Reference
+
+| Method | Endpoint / Path | Auth Level | Description | Quick Jump |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST` | `https://famgateway.in/api/create-order` | API Key Required | Create dynamic UPI order, reserve unique amount, return UPI links & QR payload | [Section 2](#2-create-order--generate-upi-qr) |
+| `GET` | `https://famgateway.in/api/checkout-status.php` | Public Safe (No Key) | Client-side frontend polling endpoint to verify payment without exposing API keys | [Section 3](#3-check-order-status--polling) |
+| `GET` | `https://famgateway.in/api/verify-order.php` | API Key Required | Server-to-server authoritative order check returning customer UTR and verification data | [Section 3](#3-check-order-status--polling) |
+| `GET` | `https://famgateway.in/pay.php?order_id=...` | Public Safe | Hosted customer checkout page with dynamic QR, intent links, and live polling | [Section 2](#2-create-order--generate-upi-qr) |
+| `GET` | `https://famgateway.in/api/qr.php` | API Key Required | Direct QR code string / image generation for terminal & embedded screens | [Section 2](#2-create-order--generate-upi-qr) |
+| `GET` | `https://famgateway.in/api/qr-image.php?order_id=...` | Public Safe | Raw QR code PNG image stream for HTML `<img>` tags | [Section 2](#2-create-order--generate-upi-qr) |
+| `GET` | `https://famgateway.in/api/verify-order.php?order_id=LINK_...` | API Key Required | Check payment status of reusable payment link transactions | [Section 5](#5-payment-links-shareable-urls) |
+| `GET` | `https://famgateway.in/transaction-details.php?id=...&download=pdf` | Public / Auth | Bank-grade PDF transaction receipt & invoice download | [Section 7](#7-automated-pdf-receipts--invoicing) |
+| `POST` | Merchant Webhook URL | HMAC-SHA256 Signed | Instant event webhook dispatched to merchant server on payment confirmation | [Section 6](#6-webhooks--multiple-endpoints-hmac-sha256-signatures) |
+| `GET` | `https://famgateway.in/ai-prompt.txt` | Public | Master AI Agent System Prompt for Cursor (.cursorrules), Claude, and ChatGPT | [ai-prompt.txt](https://famgateway.in/ai-prompt.txt) |
+| `GET` | `https://famgateway.in/docs.txt` | Public | Raw plain text documentation formatted specifically for AI models (ChatGPT, Claude, Cursor) | [docs.txt](https://famgateway.in/docs.txt) |
+| `GET` | `https://famgateway.in/openapi.json` | Public | Machine-readable OpenAPI 3.1.0 specification | [OpenAPI Spec](https://famgateway.in/openapi.json) |
+| `GET` | `https://famgateway.in/status.php` | Public | Live gateway operational health and system uptime monitor | [Live Status](https://famgateway.in/status.php) |
+
+---
+
+## 0. Base URL & Authentication
+
+All API requests must be transmitted securely over HTTPS with TLS 1.3 encryption.
+
+```text
+https://famgateway.in
+```
+
+### Authentication
+Every protected request requires your secret `api_key`. FamGateway supports three authentication mechanisms:
+
+1. **HTTP Header (Recommended & Best Practice):**  
+   `X-Api-Key: YOUR_API_KEY` or `Authorization: Bearer YOUR_API_KEY`  
+   *Always use HTTP headers in production backends to keep secrets out of URLs.*
+2. **JSON Body (POST):**  
+   `{ "api_key": "YOUR_API_KEY", ... }`
+3. **Query Parameter (Rapid Testing Only):**  
+   `?api_key=YOUR_API_KEY`
+
+> [!WARNING]
+> **Security Notice â€” Avoid Query-String Keys in Production:**  
+> Passing API keys in query parameters (`?api_key=...`) makes credentials visible in web server access logs, reverse proxy traces, browser history, and analytics referrers. In production, always transmit your credentials via the `X-Api-Key` HTTP header.
+
+Retrieve or rotate your active API key anytime in the [FamGateway Merchant Dashboard](https://famgateway.in/api-keys.php).
+
+### Rate Limits & Concurrency Architecture
+Registered merchants enjoy unlimited order creation requests with zero artificial volume quotas. The table below details exact throughput, concurrency limits, and protection mechanisms:
+
+| Resource / Endpoint | HTTP Method | Merchant Quota | Flood Protection | Exceeded Response |
+| :--- | :--- | :--- | :--- | :--- |
+| `POST /api/create-order` | `POST` | Unlimited (Active accounts) | Cloudflare L7 Flood Shield (~120 req/min/IP) | `429 Too Many Requests` |
+| `GET /api/checkout-status.php` | `GET` | 3â€“5s recommended cadence | In-memory cache + 5s IMAP lock | `200 OK` (cached `pending` in <25ms) |
+| `GET /api/verify-order.php` | `GET` | Unlimited server-to-server | API Key auth + IP burst protection | `429 Too Many Requests` |
+| Webhook Dispatch | `POST` | Parallel Fan-Out Queue | Isolated queue per URL (`webhook_jobs`) | 3 retries (5m, 10m, 15m delay) |
+
+- **Google IMAP Cooldown Lock (5s):** When an order is pending, background inbox scanning runs against your Gmail. To protect your Gmail account from Google's strict IMAP connection throttling, FamGateway enforces a 5-second per-merchant cooldown lock on IMAP mailbox connects. Status polling requests within this 5-second window return the current cached state instantly in under 25ms.
+- **High Concurrency Best Practice:** For stores handling high traffic (>500 concurrent checkouts), rely on asynchronous HMAC-SHA256 Webhooks ([Section 6](#6-webhooks--multiple-endpoints-hmac-sha256-signatures)) for order fulfillment, reserving frontend polling purely for browser UI redirects.
+
+---
+
+## 1. Prerequisites (Connect FamPay Account)
+
+Before creating live payment orders, connect your FamPay-linked Gmail in your [Integrations Settings](https://famgateway.in/integrations.php):
+
+1. **Enable IMAP in Gmail Settings (Crucial First Step):** Open Gmail on desktop &rarr; Click **Settings (Gear)** &rarr; **See all settings** &rarr; **Forwarding and POP/IMAP** tab &rarr; Select **Enable IMAP** &rarr; Click **Save Changes** at the bottom. (Direct Link: [Gmail Forwarding and POP/IMAP Settings](https://mail.google.com/mail/u/0/#settings/fwdandpop)).
+2. Go to your FamGateway dashboard &rarr; [Integrations &rarr; Connect FamPay Gmail](https://famgateway.in/integrations.php).
+3. Enter your FamPay-registered Gmail address.
+4. Generate an isolated 16-character [Google App Password](https://myaccount.google.com/apppasswords) (no spaces) and paste it.
+5. Enter your FamPay UPI ID (e.g. `yourname@fam`).
+6. Click **Save Settings**. Your integration verifies and your API key activates instantly.
+
+> [!WARNING]
+> **Critical Production Gotcha â€” Gmail IMAP Must Be Enabled Manually:**  
+> Google accounts often have IMAP access turned off by default. If IMAP is not explicitly enabled in your [Gmail Settings](https://mail.google.com/mail/u/0/#settings/fwdandpop), Google's mail servers will reject all incoming IMAP socket connections with an authentication failure even if your 16-character App Password is 100% valid. Always verify this setting once on desktop before linking.
+
+> [!NOTE]
+> **Cryptographic Security Architecture:**  
+> - **256-Bit Symmetric Encryption:** Credentials are encrypted at rest using AES-256 with unique cryptographically random 16-byte Initialization Vectors (IVs) per record.  
+> - **Server-Isolated Keys:** Master encryption keys are stored strictly in server environment files (`env.php`) and never in the database. A raw database dump alone cannot decrypt credentials.  
+> - **Stateless In-Memory Verification:** Email parsing occurs in volatile RAM for under 5 milliseconds; personal messages and inbox contents are never saved to disk or persistent storage.  
+> - **1-Click Revocation:** You retain unilateral control. Revoking the App Password in your [Google Account Security](https://myaccount.google.com/apppasswords) instantly renders the integration inert.
+
+---
+
+## 2. Create Order & Generate UPI QR
+
+Creates a dynamic payment order with an atomic UPI QR code and deep intent link.
+
+### Endpoints
+FamGateway provides two interchangeable entry points to generate orders:
+- **Canonical REST API (`POST /api/create-order`):** Recommended for all production web applications, e-commerce checkouts, and backend microservices. Accepts `application/json` payloads and header authentication (`X-Api-Key` or `Authorization: Bearer`).
+- **Query & Hardware Display Alias (`GET /api/qr.php`):** Lightweight endpoint accepting query string parameters, returning identical JSON order objects or raw PNG image streams for terminal, POS, and IoT embedded displays.
+
+### Request Parameters
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `api_key` | string | **Yes** | Your active FamGateway API Key |
+| `amount` | float | **Yes** | Exact payment amount in INR (e.g. `499.00` or `50`) |
+| `redirect_url` | string | No | URL to redirect customer after hosted web checkout |
+| `webhook_url` | string | No | Custom webhook URL override for this specific order |
+| `customer_name` | string | No | Buyer's name or username passed by your app |
+| `customer_email` | string | No | Customer's email address |
+| `customer_phone` | string | No | Customer's 10-digit phone number |
+
+> [!TIP]
+> **Zero Customer Details Required:** You do not need to collect name, email, or phone. Only `amount` is mandatory.
+
+### Integration Examples
+
+#### 1. cURL
+```bash
+# 1. Canonical REST API (POST JSON) â€” Recommended for Production
+curl -X POST "https://famgateway.in/api/create-order" \
+  -H "Content-Type: application/json" \
+  -H "X-Api-Key: YOUR_API_KEY" \
+  -d '{
+    "amount": 499.00,
+    "customer_name": "Rahul Sharma",
+    "customer_email": "rahul@example.com",
+    "redirect_url": "https://yoursite.com/payment-success"
+  }'
+
+# 2. Query Alias (GET) â€” Ideal for quick terminal testing & scripts
+curl -X GET "https://famgateway.in/api/qr.php?api_key=YOUR_API_KEY&amount=499&customer_name=Rahul"
+```
+
+#### 2. Node.js (Fetch / Axios)
+```javascript
+const apiKey = "YOUR_API_KEY";
+const amount = 499.00;
+
+// GET Method
+const res = await fetch(`https://famgateway.in/api/qr.php?api_key=${encodeURIComponent(apiKey)}&amount=${amount}&customer_name=Rahul`);
+const result = await res.json();
+
+if (result.status === "success") {
+  const { order_id, payable_amount, qr_url, upi_intent, checkout_url } = result.data;
+  console.log("Order ID:", order_id);
+  console.log("QR Code Image:", qr_url);
+  console.log("UPI Deep Link:", upi_intent);
+  console.log("Hosted Checkout:", checkout_url);
+}
+
+// POST Method
+/*
+const postRes = await fetch("https://famgateway.in/api/create-order", {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    api_key: apiKey,
+    amount: 499.00,
+    customer_name: "Rahul"
+  })
+});
+const postData = await postRes.json();
+*/
+```
+
+#### 3. Python SDK (`pip install famgateway`)
+```python
+from famgateway import FamGateway
+
+fg = FamGateway(api_key="YOUR_API_KEY")
+order = fg.create_order(amount=499.00, customer_name="Rahul")
+
+print("Order ID:", order.order_id)
+print("QR Code URL:", order.qr_url)
+print("UPI Deep Link:", order.upi_intent)
+print("Hosted Checkout:", order.checkout_url)
+```
+
+#### 4. PHP SDK
+```php
+require_once 'FamGateway.php';
+
+$fg = new FamGateway('YOUR_API_KEY');
+
+// Option A: 1-line hosted checkout redirect
+$fg->createPayment(499.00, 'https://yoursite.com/success');
+
+// Option B: Custom headless order payload
+$order = $fg->createOrder(499.00, [
+    'customer_name' => 'Rahul Sharma',
+    'redirect_url'  => 'https://yoursite.com/success'
+]);
+echo "Checkout URL: " . $order['checkout_url'];
+```
+
+### Success Response (200 OK)
+```json
+{
+  "status": "success",
+  "data": {
+    "order_id": "fg_DYCBZH5D",
+    "qr_url": "https://famgateway.in/api/qr-image.php?order_id=fg_DYCBZH5D",
+    "checkout_url": "https://famgateway.in/pay.php?order_id=fg_DYCBZH5D",
+    "upi_id": "merchant@fam",
+    "amount": "499",
+    "payable_amount": "499",
+    "upi_intent": "upi://pay?pa=merchant%40fam&pn=FamPay&tr=fg_DYCBZH5D&tn=fg_DYCBZH5D&am=499.00&cu=INR",
+    "created_at_ist": "08-09-2026 09:15:20",
+    "expires_at_ist": "08-09-2026 09:20:20"
+  }
+}
+```
+
+### Order Creation JSON Response Fields
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `order_id` | string | Unique 10-character alphanumeric transaction session identifier (e.g., `fg_DYCBZH5D`). Used to query status and identify webhook callbacks. |
+| `amount` | string | Base payment amount requested by your client application in INR. |
+| `payable_amount` | string | Exact clean amount the customer must transfer in INR (e.g., `499.00`). Strictly matches requested base amount; FamGateway verifies payments via exact Order ID purpose matching and Bank UTR idempotency without altering rupee amounts. |
+| `upi_id` | string | Your personal FamPay UPI VPA (e.g., `yourname@fam`) receiving 100% of customer funds directly with zero platform custody. |
+| `qr_url` | string | Direct image URL returning a clean PNG/SVG QR code. Can be embedded directly inside mobile apps or HTML `<img>` tags. |
+| `checkout_url` | string | Hosted checkout gateway page with dynamic QR, mobile UPI intent buttons, and real-time live polling. |
+| `upi_intent` | string | Standard NPCI UPI deep link (`upi://pay?...`) for opening PhonePe, Google Pay, Paytm, or BHIM directly on mobile devices without scanning. |
+| `expires_at_ist` | string | Indian Standard Time (IST) timestamp when this payment session and reserved amount will expire (exactly 5 minutes / 300 seconds). |
+
+---
+
+## 3. Check Order Status & Polling
+
+### Recommended Polling Interval: 3 to 5 Seconds
+Bank credit emails sync over IMAP within 2 to 4 seconds. Polling faster than 3 seconds is unnecessary and will hit the automatic 5-second merchant rate limit lock.
+
+### Endpoints
+1. **Frontend / Browser Safe (Public):**  
+   `GET /api/checkout-status.php?order_id=fg_XXXXXXXX`  
+   *Does not expose your secret `api_key`.*
+
+2. **Backend Server-to-Server:**  
+   `GET /api/verify-order.php?api_key=YOUR_API_KEY&order_id=fg_XXXXXXXX`
+
+### Response Payload
+```json
+{
+  "status": "success",
+  "order_id": "fg_DYCBZH5D",
+  "amount": "499.00",
+  "utr": "420987654321",
+  "sender_name": "Rahul Sharma",
+  "paid_at": "2026-09-08 09:16:45"
+}
+```
+
+### Order Verification JSON Response Fields
+
+| Field | Type | Description |
+| :--- | :--- | :--- |
+| `status` | string | Overall lifecycle status: `success` (confirmed paid), `pending` (awaiting UPI payment), or `expired` (session timed out). |
+| `order_id` | string | The 10-character alphanumeric transaction identifier matching your creation request. |
+| `amount` | number / string | The final settled amount verified and credited to your FamPay UPI account in INR. |
+| `utr` | string | 12-digit Unique Transaction Reference assigned by NPCI and IDFC FIRST Bank UPI switch. Guarantees banking idempotency. |
+| `sender_name` | string | Verified full name of the customer extracted directly from the authenticated bank notification email upon payment completion. |
+| `paid_at` | string | Exact timestamp when the bank credit notification was processed and verified. |
+
+### Idempotency, Retries & Double-Spend Prevention
+
+FamGateway implements bank-grade idempotency mechanisms at both database and transaction levels:
+- **Database Bank UTR Idempotency:** When a payment is processed, the Bank UTR and Transaction ID are atomically validated against existing successful records in the database (`orders` table). Any subsequent attempt to claim or replay the same UTR across any order is rejected immediately with `Duplicate payment attempt blocked`.
+- **Atomic Concurrency Locking (MySQL `FOR UPDATE`):** When processing payment fulfillment, FamGateway executes an atomic row lock on the order and merchant record, pairing the unique Order ID embedded in the UPI transaction note with Bank UTR deduplication. This guarantees 100% collision-free payment attribution on exact clean rupee amounts without altering prices.
+- **Safe Client Retries:** If a client network connection drops during `POST /api/create-order`, retrying the request creates a clean new session. Unpaid pending orders safely expire in 5 minutes (300s) with zero financial liability.
+
+### Order Lifecycle & State Machine
+
+| State | Duration | Description & Action Required |
+| :--- | :--- | :--- |
+| `PENDING` | 0 to 5 mins (300s) | Order initialized, dynamic QR code active with exact clean amount and embedded Order ID note. Your frontend or bot should poll status every 3â€“5 seconds. |
+| `SUCCESS` | Permanent | Payment confirmed via real-time IMAP listener. Bank UTR logged, webhook fired, and PDF receipt generated. Fulfill digital good or activate account. |
+| `EXPIRED` | After 5 mins (300s) | Payment session window elapsed without verified bank credit. Order marked expired and QR invalidated to protect against stale transfers. Display fresh order to user. |
+
+> [!NOTE]
+> **Verified Bank Sender:** The `sender_name` field is extracted directly from the authenticated bank credit notification upon payment confirmation. Prior to payment, `sender_name` is null.
+
+#### Browser JavaScript Polling Example
+```javascript
+const orderId = "fg_DYCBZH5D";
+
+const pollInterval = setInterval(async () => {
+  const res = await fetch(`https://famgateway.in/api/checkout-status.php?order_id=${encodeURIComponent(orderId)}`);
+  const data = await res.json();
+
+  if (data.status === "success") {
+    clearInterval(pollInterval);
+    console.log("Payment Confirmed! UTR:", data.utr, "Payer:", data.sender_name);
+    window.location.href = "/order-success?order_id=" + orderId;
+  } else if (data.status === "expired") {
+    clearInterval(pollInterval);
+    alert("Payment session timed out. Please generate a new QR.");
+  }
+}, 3000); // 3-second interval
+```
+
+---
+
+## 4. Universal Architecture & Reference Implementations
+
+FamGateway is an agnostic REST gateway engineered for any digital stack â€” Websites, SaaS billing, mobile applications (Flutter / React Native), Telegram bots, WhatsApp stores, and custom microservices.
+
+### Python SDK Quickstart (`pip install famgateway`)
+```python
+from famgateway import FamGateway
+import time
+
+fg = FamGateway(api_key="YOUR_API_KEY")
+
+# 1. Create order
+order = fg.create_order(amount=499.00)
+print("Scan QR to Pay:", order.qr_url)
+
+# 2. Check status (or poll)
+for _ in range(100):
+    time.sleep(3)
+    status = fg.get_status(order.order_id)
+    if status.is_paid:
+        print(f"Payment Captured! UTR: {status.utr}, Payer: {status.sender_name}")
+        break
+    elif status.is_expired:
+        print("Order expired.")
+        break
+```
+
+### B. Web Backend: Node.js (Express)
+```javascript
+const express = require('express');
+const crypto = require('crypto');
+const app = express();
+app.use(express.json());
+
+const API_KEY = process.env.FAMGATEWAY_API_KEY || 'YOUR_FAMGATEWAY_API_KEY';
+
+// 1. Create Checkout endpoint
+app.post('/api/create-checkout', async (req, res) => {
+  const { amount, customerName } = req.body;
+
+  const resp = await fetch('https://famgateway.in/api/create-order', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      api_key: API_KEY,
+      amount: amount || 499.00,
+      customer_name: customerName,
+      redirect_url: 'https://yoursite.com/payment-success'
+    })
+  });
+
+  const orderData = await resp.json();
+  res.json(orderData);
+});
+
+// 2. Real-Time Webhook Listener (Called automatically upon bank credit)
+// PRODUCTION SECURITY MANDATE: Always verify X-FamGateway-Signature before fulfilling orders (see Section 6)
+app.post('/api/famgateway-webhook', async (req, res) => {
+  const signature = req.headers['x-famgateway-signature'];
+  const expected = crypto.createHmac('sha256', API_KEY)
+    .update(req.rawBody || JSON.stringify(req.body))
+    .digest('hex');
+
+  if (signature && signature !== expected) {
+    return res.status(401).json({ error: 'Invalid webhook signature' });
+  }
+
+  const { status, order_id, utr, amount, sender_name } = req.body;
+  if (status === 'success') {
+    console.log(`Verified Order ${order_id} (UTR: ${utr}) of Rs ${amount} from ${sender_name}`);
+    await fulfillCustomerOrder(order_id);
+  }
+
+  res.json({ status: 'received' });
+});
+
+app.listen(3000, () => console.log('Server running on port 3000'));
+```
+
+### C. Web Backend: Python (FastAPI)
+```python
+from fastapi import FastAPI, Request
+from famgateway import FamGateway
+
+app = FastAPI()
+fg = FamGateway(api_key="YOUR_FAMGATEWAY_API_KEY")
+
+@app.post("/api/checkout")
+def create_payment(amount: float, customer_name: str = "Customer"):
+    order = fg.create_order(
+        amount=amount,
+        customer_name=customer_name,
+        redirect_url="https://yoursite.com/payment-success"
+    )
+    return {
+        "order_id": order.order_id,
+        "qr_url": order.qr_url,
+        "upi_intent": order.upi_intent,
+        "checkout_url": order.checkout_url
+    }
+
+@app.post("/api/webhook")
+async def handle_webhook(request: Request):
+    # PRODUCTION SECURITY MANDATE: Always verify X-FamGateway-Signature before fulfilling orders (see Section 6)
+    sig = request.headers.get("x-famgateway-signature")
+    body = await request.body()
+    if sig and not FamGateway.verify_webhook_signature(body, sig, "YOUR_FAMGATEWAY_API_KEY"):
+        return {"error": "Invalid signature"}
+
+    payload = await request.json()
+    if payload.get("status") == "success":
+        order_id = payload.get("order_id")
+        utr = payload.get("utr")
+        sender_name = payload.get("sender_name")
+        print(f"Payment Captured! Order: {order_id}, UTR: {utr}, Payer: {sender_name}")
+    return {"status": "ok"}
+```
+
+### D. Telegram Bot Implementation
+```python
+import time
+import threading
+import telebot
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from famgateway import FamGateway
+
+bot = telebot.TeleBot("YOUR_TELEGRAM_BOT_TOKEN")
+fg = FamGateway(api_key="YOUR_FAMGATEWAY_API_KEY")
+
+def auto_poll_order(chat_id, message_id, order_id, amount):
+    for _ in range(100):  # Poll up to 5 minutes
+        time.sleep(3)
+        try:
+            status = fg.get_status(order_id)
+            if status.is_paid:
+                try:
+                    bot.delete_message(chat_id, message_id)
+                except Exception:
+                    pass
+
+                bot.send_message(
+                    chat_id,
+                    f"Payment Verified!\n\nOrder ID: `{order_id}`\nBank UTR: `{status.utr}`\nAmount: Rs {amount:.2f}\nYour access has been activated!",
+                    parse_mode="Markdown"
+                )
+                break
+            elif status.is_expired:
+                break
+        except Exception:
+            continue
+
+@bot.message_handler(commands=['buy'])
+def handle_buy(message):
+    order = fg.create_order(amount=50.0, customer_name=message.from_user.first_name)
+
+    markup = InlineKeyboardMarkup()
+    markup.row(InlineKeyboardButton("Pay via UPI App / Web", url=order.checkout_url))
+
+    caption = (
+        f"Instant UPI Payment\n\n"
+        f"Amount: Rs {order.payable_amount}\n"
+        f"Order ID: `{order.order_id}`\n\n"
+        f"Scan QR code with PhonePe, GPay, or Paytm.\n"
+        f"Auto-verifies within 3 seconds!"
+    )
+
+    photo_msg = bot.send_photo(
+        chat_id=message.chat.id,
+        photo=order.qr_url,
+        caption=caption,
+        parse_mode="Markdown",
+        reply_markup=markup
+    )
+
+    threading.Thread(
+        target=auto_poll_order,
+        args=(message.chat.id, photo_msg.message_id, order.order_id, 50.0),
+        daemon=True
+    ).start()
+
+bot.infinity_polling()
+```
+
+### E. WhatsApp Payment Bot Implementation
+```python
+from flask import Flask, request, jsonify
+import requests
+import hmac
+import hashlib
+
+app = Flask(__name__)
+API_SECRET = "YOUR_FAMGATEWAY_API_KEY"
+WHATSAPP_TOKEN = "YOUR_WHATSAPP_TOKEN"
+WHATSAPP_PHONE_ID = "YOUR_PHONE_NUMBER_ID"
+
+def send_whatsapp(to_phone, msg):
+    url = f"https://graph.facebook.com/v19.0/{WHATSAPP_PHONE_ID}/messages"
+    headers = {"Authorization": f"Bearer {WHATSAPP_TOKEN}"}
+    payload = {
+        "messaging_product": "whatsapp",
+        "to": to_phone,
+        "type": "text",
+        "text": {"body": msg}
+    }
+    requests.post(url, json=payload, headers=headers)
+
+@app.route('/webhook', methods=['POST'])
+def webhook_handler():
+    raw = request.get_data()
+    sig = request.headers.get('X-FamGateway-Signature')
+    expected = hmac.new(API_SECRET.encode(), raw, hashlib.sha256).hexdigest()
+
+    if sig != expected:
+        return jsonify({"error": "Invalid signature"}), 403
+
+    data = request.get_json()
+    if data.get('status') == 'success':
+        customer_phone = data.get('custom_fields', {}).get('phone')
+        amount = data.get('amount')
+        utr = data.get('utr')
+        send_whatsapp(customer_phone, f"Payment of Rs.{amount} Verified!\nBank UTR: {utr}\nThank you for your order.")
+
+    return jsonify({"status": "ok"}), 200
+
+if __name__ == '__main__':
+    app.run(port=5000)
+```
+
+### Common Integration Mistakes & Pitfalls to Avoid
+1. **Never Show Raw JSON:** Do not dump raw JSON strings to customers. Extract `qr_url` to render an image, or redirect them to `checkout_url`.
+2. **Never Poll Faster than 3 Seconds:** Bank IMAP alerts take 2â€“4s. Polling faster than 3s will trigger merchant rate-limit locks.
+3. **Never Expose Secret API Key in Frontend:** Only call `/api/checkout-status.php?order_id=...` in browser JavaScript.
+4. **Universal REST Architecture:** FamGateway works identically for websites, mobile apps, SaaS, and automation bots.
+
+---
+
+## 5. Payment Links (Shareable URLs)
+
+Payment Links are reusable, shareable URLs created without custom code. Share them across WhatsApp, Instagram, Telegram, or email invoices.
+
+### Verification Endpoint
+You can verify if a payment link has been paid using `verify-order.php` by prefixing the slug with `LINK_`:
+
+```text
+GET https://famgateway.in/api/verify-order.php?api_key=YOUR_KEY&order_id=LINK_yourname-abc123
+```
+
+| Parameter | Type | Required | Description |
+| :--- | :--- | :--- | :--- |
+| `api_key` | string | **Yes** | Your active secret API Key |
+| `order_id` | string | **Yes** | Prefix the payment link slug with `LINK_` (e.g. `LINK_store-pro-100`) |
+
+---
+
+## 6. Webhooks & Multiple Endpoints (HMAC-SHA256 Signatures)
+
+Webhooks push instant server-to-server POST notifications upon bank credit. Every webhook carries an authenticating `X-FamGateway-Signature` header calculated using your secret API Key.
+
+> [!IMPORTANT]
+> **Signing Secret Architecture Clarification â€” Master API Key as Secret:**  
+> Unlike legacy payment aggregators that force you to generate and store separate webhook signing secrets (such as `whsec_...`), FamGateway cryptographically signs all outgoing webhook payloads directly using your active **Merchant Default API Key** (`YOUR_FAMGATEWAY_API_KEY`) as the HMAC-SHA256 secret. When verifying the `X-FamGateway-Signature` header on your server, simply pass your FamGateway API Key as the secret. No extra webhook secret configuration is required.
+
+### Multiple Webhook Endpoints (Parallel Fan-Out)
+Under [Webhooks Settings](https://famgateway.in/webhooks.php), you can register multiple endpoints:
+- **Parallel Broadcast:** Dispatches notifications simultaneously to your website store, Telegram bot, and backup database.
+- **Isolated Retries:** Each destination operates on an independent queue job (`webhook_jobs`). A failure on one server never blocks deliveries to others.
+- **SSRF Firewall Protection:** Automatic blocking of loopback addresses (`127.0.0.1`, `localhost`) and private subnets.
+- **Dynamic Per-Order Routing:** Pass `&webhook_url=https://custom.com/hook` in `create_order` to override URLs dynamically.
+
+### Webhook Event Payload Example
+```json
+{
+  "event": "payment.success",
+  "status": "success",
+  "order_id": "fg_DYCBZH5D",
+  "transaction_id": "FMP987654321",
+  "amount": 499.00,
+  "utr": "420987654321",
+  "sender_name": "Rahul Sharma",
+  "payment_time_ist": "08-09-2026 09:16:45"
+}
+```
+
+### Signature Verification Examples
+
+#### Node.js (Express)
+```javascript
+const crypto = require('crypto');
+
+app.post('/webhook', (req, res) => {
+  const signature = req.headers['x-famgateway-signature'];
+  const expected = crypto.createHmac('sha256', API_KEY)
+    .update(req.rawBody)
+    .digest('hex');
+
+  if (!signature || !crypto.timingSafeEqual(Buffer.from(signature), Buffer.from(expected))) {
+    return res.status(401).send('Invalid webhook signature');
+  }
+
+  const { order_id, amount, utr, sender_name } = req.body;
+  console.log(`Payment confirmed: Order ${order_id} (UTR: ${utr}) of Rs.${amount} from ${sender_name}`);
+  res.status(200).send('OK');
+});
+```
+
+#### Python (FastAPI)
+```python
+import hmac, hashlib
+from fastapi import FastAPI, Request, HTTPException, Header
+
+@app.post("/webhook")
+async def verify_webhook(request: Request, x_famgateway_signature: str = Header(None)):
+    body = await request.body()
+    expected = hmac.new(API_KEY.encode(), body, hashlib.sha256).hexdigest()
+
+    if not hmac.compare_digest(expected, x_famgateway_signature or ""):
+        raise HTTPException(status_code=401, detail="Invalid signature")
+
+    data = await request.json()
+    print(f"Verified Order: {data['order_id']}, UTR: {data['utr']}")
+    return {"status": "ok"}
+```
+
+#### PHP SDK
+```php
+require_once 'FamGateway.php';
+
+$fg = new FamGateway('YOUR_API_KEY');
+$rawBody = file_get_contents('php://input');
+$sigHeader = $_SERVER['HTTP_X_FAMGATEWAY_SIGNATURE'] ?? '';
+
+$event = $fg->verifyWebhook($rawBody, $sigHeader);
+if ($event) {
+    // Verified payment: fulfill access
+    echo "OK";
+} else {
+    http_response_code(400);
+    echo "Invalid Signature";
+}
+```
+
+---
+
+## 7. Automated PDF Receipts & Invoicing
+
+Every verified UPI transaction automatically compiles an official, institutional A4 PDF receipt with Government of India MSME registration (**UDYAM-BR-28-0050000**) under **ARYANISPE**. Receipts are generated in memory with zero disk latency.
+
+### Features
+- **Automatic Email Attachment:** An immutable base64-encoded PDF (`Receipt_{order_id}.pdf`) is automatically attached to instant merchant notification emails.
+- **On-Demand Download API:** Both merchants and buyers can retrieve signed PDF receipts anytime via HTTP GET.
+- **Statutory Compliance:** Contains verified Bank UTR, Payer Name, exact timestamp, and MSME legal credentials for accounting and tax records.
+
+### Download Endpoint
+```text
+GET https://famgateway.in/transaction-details.php?id=ORDER_ID&download=pdf
+```
+
+#### Python Download Helper
+```python
+import requests
+
+order_id = "fg_DYCBZH5D"
+receipt_url = f"https://famgateway.in/transaction-details.php?id={order_id}&download=pdf"
+
+res = requests.get(receipt_url)
+if res.status_code == 200:
+    with open(f"Receipt_{order_id}.pdf", "wb") as f:
+        f.write(res.content)
+    print("PDF Receipt saved successfully!")
+```
+
+---
+
+## 8. HTTP Status & Error Codes
+
+All API error responses adhere to standard HTTP status codes and a consistent JSON format:
+
+```json
+{
+  "status": "error",
+  "code": "unauthorized",
+  "message": "Invalid or missing API Key. Please verify your credentials."
+}
+```
+
+| HTTP Code | Status Code | Reason | Resolution |
+| :--- | :--- | :--- | :--- |
+| **200 OK** | `success` | Request executed successfully | N/A |
+| **400 Bad Request** | `bad_request` | Missing required parameters (e.g. `amount`) | Provide valid numeric `amount` |
+| **401 Unauthorized** | `unauthorized` | Invalid or missing `api_key` | Verify key in [API Keys Dashboard](https://famgateway.in/api-keys.php) |
+| **403 Forbidden** | `suspended` | Account suspended or restricted by admin | Contact support desk |
+| **404 Not Found** | `not_found` | `order_id` does not exist | Check order ID string |
+| **408 Request Timeout** | `expired` | 5-minute payment window exceeded | Generate a fresh QR order |
+| **429 Too Many Requests** | `rate_limited` | Polling faster than recommended 3â€“5s | Throttle polling frequency |
+| **500 Internal Error** | `error` | Gmail IMAP session disconnected | Re-verify credentials in [Integrations](https://famgateway.in/integrations.php) |
+
+---
+
+
+### Standard Error Response Examples (JSON)
+
+```json
+// HTTP 400 Bad Request
+{ "status": "error", "message": "Missing or invalid amount parameter" }
+
+// HTTP 401 Unauthorized
+{ "status": "unauthorized", "message": "Invalid api_key" }
+
+// HTTP 404 Not Found
+{ "status": "not_found", "message": "Order ID or payment link not found" }
+
+// HTTP 408 Request Timeout (Expired Order)
+{ "status": "expired", "message": "Order expired" }
+
+// HTTP 429 Too Many Requests
+{ "status": "error", "message": "Rate limit exceeded. Please throttle requests." }
+
+// HTTP 500 Server Error
+{ "status": "error", "message": "FamPay Gmail not connected. Connect it in your dashboard first." }
+```
+
+---
+
+## 9. Official Open-Source SDKs, Modules & Ecosystem
+
+FamGateway maintains official, battle-tested open-source libraries and integration modules across multiple languages and hosting platforms.
+
+---
+
+### A. Official Python SDK (`famgateway`)
+
+- **PyPI Package:** [`famgateway`](https://pypi.org/project/famgateway/) (`pip install famgateway`)
+- **Version:** `1.0.4`
+- **Python Compatibility:** Python >= 3.7
+- **License:** MIT
+- **GitHub Repository:** [https://github.com/aryanispe/famgateway-python](https://github.com/aryanispe/famgateway-python)
+- **Cloud Whitelist:** Fully whitelisted on **PythonAnywhere Free Tier** for zero-cost cloud bot hosting.
+
+#### Installation
+```bash
+pip install famgateway
+```
+
+#### Core Methods Reference
+| Method | Parameters | Return Type | Description |
+| :--- | :--- | :--- | :--- |
+| `fg.create_order(...)` | `amount` (float/str), `customer_name` (opt), `customer_email` (opt), `customer_phone` (opt), `redirect_url` (opt), `webhook_url` (opt) | `OrderResponse` | Creates dynamic payment order with unique amount reservation and deep links. |
+| `fg.get_status(...)` | `order_id` (str) | `OrderStatus` | Fast public polling check. Returns object with boolean `.is_paid`, `.is_expired`, and `.utr`. |
+| `fg.verify_order(...)` | `order_id` (str) | `OrderStatus` | Authoritative server-to-server verification check using your authenticated API Key. |
+| `FamGateway.verify_webhook_signature(...)` | `payload` (bytes/str), `signature` (str), `api_key` (str) | `bool` | Static timing-safe HMAC-SHA256 signature verifier preventing timing attack exploits. |
+| `fg.verify_webhook(...)` | `payload` (bytes/str), `signature` (str) | `bool` | Instance webhook validator using the client's configured API Key. |
+
+#### Custom Exception Hierarchy
+| Exception Class | Base Exception | Trigger Condition |
+| :--- | :--- | :--- |
+| `AuthenticationError` | `FamGatewayError` | Raised on HTTP 401 when API Key is missing, malformed, or revoked. |
+| `OrderNotFoundError` | `FamGatewayError` | Raised on HTTP 404 when querying an invalid or deleted `order_id`. |
+| `APIError` | `FamGatewayError` | Raised on API business failures or server error codes (HTTP 4xx/5xx). |
+| `NetworkError` | `FamGatewayError` | Raised on DNS resolution failures, proxy drops, or request timeouts. |
+
+---
+
+### B. Official PHP SDK (`aryanispe/famgateway-php-sdk`)
+
+- **Composer Package:** [`aryanispe/famgateway-php-sdk`](https://packagist.org/packages/aryanispe/famgateway-php-sdk)
+- **Direct ZIP Download:** [`famgateway-sdk.zip`](https://famgateway.in/famgateway-sdk.zip)
+- **PHP Compatibility:** PHP >= 7.4 (Fully tested on PHP 8.0, 8.1, 8.2, 8.3)
+- **Dependencies:** None (Zero external dependencies; prefers native cURL with clean stream context fallback)
+- **GitHub Repository:** [https://github.com/aryanispe/famgateway-php-sdk](https://github.com/aryanispe/famgateway-php-sdk)
+
+#### Installation
+```bash
+# Option 1: Via Composer
+composer require aryanispe/famgateway-php-sdk
+
+# Option 2: Standalone Drop-in File
+# Download famgateway-sdk.zip and include directly:
+require_once __DIR__ . '/FamGateway.php';
+```
+
+#### Core Methods Reference
+| Method | Parameters | Return Type | Description |
+| :--- | :--- | :--- | :--- |
+| `new FamGateway($apiKey)` | `$apiKey` (string) | `FamGateway` | Initializes client with your secret merchant API Key. |
+| `$fg->createPayment(...)` | `$amount`, `$redirectUrl = ''`, `$webhookUrl = ''` | `void` (redirect) | Creates order and immediately redirects customer browser to hosted checkout page. |
+| `$fg->createOrder(...)` | `$amount`, `$params = []` | `array` | Headless order creation. Returns full array with `order_id`, `checkout_url`, `qr_url`, and `upi_intent` without redirecting. |
+| `$fg->getOrderStatus(...)` | `$orderId` (string) | `array` | Queries authoritative verification endpoint. Returns payment status, Bank UTR, and payer name. |
+| `$fg->verifyWebhook(...)` | `$rawPostData` (string), `$signature` (string) | `array|false` | Timing-safe signature validator using `hash_equals()`. Returns decoded JSON payload if authentic, or false if forged. |
+
+---
+
+### C. Official WHMCS Payment Gateway Module
+
+- **Module Package:** [`FamGateway-WHMCS-Module.zip`](https://famgateway.in/FamGateway-WHMCS-Module.zip)
+- **Target Audience:** Web hosting providers, VPS & dedicated server sellers, domain registrars running WHMCS.
+- **Transaction Fees:** 0% platform fee. All customer payments transfer directly into your personal FamPay UPI VPA.
+- **Compatibility:** WHMCS v8.x and v7.x
+
+#### 3-Step WHMCS Installation Guide
+1. **Upload Module Files:** Download `FamGateway-WHMCS-Module.zip`, extract, and upload the `modules/` folder directly to your WHMCS root directory (e.g., `public_html/whmcs/`). This automatically places `modules/gateways/famgateway.php` and `modules/gateways/callback/famgateway.php`.
+2. **Activate in Admin Panel:** Log in to your WHMCS Admin Panel. Navigate to **Configuration (System Settings) -> Payment Gateways -> All Payment Gateways** tab. Click on **FamGateway (0% Fee UPI)** to activate.
+3. **Configure API Key:** Check the *Show on Order Form* checkbox, paste your secret **API Key** from your FamGateway merchant dashboard, and click *Save Changes*. Invoices will now display a dynamic "Pay with UPI" checkout button and auto-mark as **Paid** with Bank UTR upon payment.
+
+---
+
+### D. Reference Payment Bot Implementations
+
+- **Python Telegram Bot Engine:** Complete asynchronous implementation using `pyTelegramBotAPI` + `famgateway`. Features non-blocking auto-polling daemon threads, dynamic QR photo upload, and automatic message deletion upon payment or session expiry. See [Section 4: Telegram Bot](#d-telegram-bot-implementation).
+- **Python WhatsApp Payment Bot:** Automated WhatsApp store implementation using Flask webhooks + Meta WhatsApp Cloud API / Twilio. Generates instant UPI dynamic QR links and executes instant product delivery upon webhook confirmation. See [WhatsApp Integration Guide](https://famgateway.in/blog/how-to-accept-fampay-upi-payments-on-whatsapp-automation-bot.php).
+
+---
+
+### E. OpenAPI 3.1.0 Specification & Postman Collection
+
+- **Specification URL:** [`https://famgateway.in/openapi.json`](https://famgateway.in/openapi.json)
+- **Format:** OpenAPI 3.1.0 JSON Schema
+- **Features:** Complete schema definitions for all request parameters, response models (`OrderResponse`, `OrderStatus`), webhook event formats, and HTTP error codes.
+- **Tooling Support:** Import directly into **Postman**, **Insomnia**, **Swagger UI**, or code generator CLI tools (`openapi-generator`, `fernc`) to auto-compile client libraries in Go, Java, C#, TypeScript, or Swift.
+
+---
+
+### Platform Legal Credentials & Developer Community
+- **Operating Legal Entity:** ARYANISPE (Ministry of MSME Reg: `UDYAM-BR-28-0050000`)
+- **Founder & Maintainer:** Aryan Gupta ([@aryanispe](https://github.com/aryanispe))
+- **Live System Status Monitor:** [https://famgateway.in/status.php](https://famgateway.in/status.php)
+- **Telegram Developer Community:** [https://t.me/aryanispe_related](https://t.me/aryanispe_related) (3,000+ Developers)
+- **YouTube Tutorials:** [https://www.youtube.com/@aryanispe](https://www.youtube.com/@aryanispe) (1,390+ Subscribers)
+- **Direct WhatsApp Developer Support:** [+91 9771348544](https://wa.me/919771348544?text=Hello%2C%20I%20came%20from%20FamGateway%20Documentation)
+
+---
+
+## 10. Architecture Philosophy & Frequently Asked Questions (FAQs)
+
+FamGateway is intentionally designed around a non-custodial, developer-first architecture. Below are detailed technical explanations for our key design decisions:
+
+### Q1. Why is there no programmatic refund API endpoint (`/api/refund`)?
+**Because FamGateway is 100% Non-Custodial.**  
+Traditional payment aggregators (Razorpay, Stripe, Cashfree) hold customer funds in nodal escrow accounts for 2â€“3 business days (T+2 settlement) and charge a 2% transaction fee. This gives them unilateral authority to debit customer refunds directly from their ledger balance. In contrast, FamGateway charges **0% platform fees** and never touches, holds, or escrows your money. 100% of customer funds transfer peer-to-peer directly into your personal FamPay UPI wallet instantly. Because FamGateway has zero debit permissions on your personal bank account, all refunds are handled manually by you directly from your FamApp or UPI mobile banking app.
+
+### Q2. Why does the platform verify payments via Gmail IMAP rather than direct bank switch hooks?
+**To eliminate corporate paperwork, GSTIN mandates, and current account restrictions for independent creators.**  
+Direct banking switches require registered private limited entities, current account merchant underwriting, audited balance sheets, and weeks of compliance verification. FamGateway enables students, solo developers, and early-stage startups to accept automated UPI payments with zero paperwork and a personal savings account. Our low-latency IMAP engine evaluates incoming bank confirmation emails in volatile RAM in under 5 milliseconds with 256-bit AES encryption, verifying payments without exposing your personal banking credentials.
+
+### Q3. Why does FamGateway support only UPI in INR (no international credit cards)?
+FamGateway is specialized for India's National Payments Corporation of India (NPCI) UPI network. UPI represents India's most ubiquitous, instant, zero-MDR payment rail. For international cross-border transactions in foreign currencies (USD/EUR) requiring Visa/Mastercard processing, custodial international processors (like Stripe) are recommended. FamGateway exists specifically to solve frictionless, zero-fee domestic peer-to-peer UPI payments without corporate overhead.
+
+### Q4. Why do dynamic payment sessions expire after 5 minutes (300 seconds)?
+**To prevent stale payment collisions and match Indian banking session standards.**  
+When concurrent customers check out simultaneously, FamGateway pairs exact Order IDs embedded in the UPI transaction note with Bank UTR idempotency locking. The 5-minute (300-second) dynamic QR window matches standard NPCI banking session timeouts, prevents abandoned checkouts from lingering indefinitely, and protects merchants against delayed or confused transfers while giving genuine buyers plenty of time to scan and approve.
+
+### Q5. What happens if a customer takes a screenshot of the QR and pays after closing the browser?
+**Payments are automatically captured by our background reconciliation engine.**  
+Even if the buyer closes the checkout tab, our autonomous 1-minute background reconciliation daemon scans all newly synced bank credits against active pending orders. The moment the customer transfers funds, the engine locks the Bank UTR, updates order status to `success`, and fires your webhook automatically.
+
+### Q6. Do I need a separate webhook signing secret, or do I use my master API Key?
+**FamGateway intentionally uses your Merchant Default API Key as the cryptographic HMAC-SHA256 secret.** There is no separate or secondary webhook secret to configure. When verifying the X-FamGateway-Signature header on incoming webhooks, pass your active FamGateway API Key as the secret key. This unified key architecture eliminates configuration drift and simplifies secrets management across staging and production.
+
+### Q7. How should I test payment verification and webhook delivery in development?
+**Test directly using small live micro-transactions (e.g., Re. 1.00).** Because FamGateway operates on a 100% zero-fee, non-custodial rail, testing with Re. 1.00 incurs zero deductions or gateway fees &mdash; the full amount transfers peer-to-peer into your own FamPay wallet instantly. This allows you to verify real bank UTR generation, automated Gmail email parsing, and production webhook delivery in true real-world conditions.
+
+### Q8. Why is enabling IMAP inside Gmail settings mandatory if I already generated an App Password?
+**Because Google enforces a two-tier protocol check on mailboxes.** An App Password grants application-level authentication, but Google's mail server will reject all IMAP connection handshakes (imap.gmail.com:993) if the IMAP transport protocol is toggled off in your mailbox settings. Many Gmail accounts have IMAP disabled by default. Enabling IMAP under [Gmail Settings &rarr; Forwarding and POP/IMAP](https://mail.google.com/mail/u/0/#settings/fwdandpop) ensures Google accepts incoming socket handshakes.
+
+### Q9. How does FamGateway handle high-concurrency traffic and API rate limits?
+Order creation is virtually unlimited with zero merchant throttling, protected at the network edge by Cloudflare DDoS mitigation and standard IP burst limits (~120 req/min per IP). For status checks, frontend checkouts poll /api/checkout-status.php every 3 to 5 seconds. To protect your connected Gmail account from Google IMAP connection bans, our backend enforces a 5-second per-merchant concurrency cooldown on IMAP inbox connects. For large enterprise volumes (>500 concurrent orders), merchants should rely on our parallel Webhook Fan-Out architecture for zero-polling, instant fulfillment.

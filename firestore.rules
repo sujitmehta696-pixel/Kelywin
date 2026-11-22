@@ -1,0 +1,393 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() >= 1 && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        ('email' in request.auth.token &&
+         request.auth.token.email == 'sujitmehta696@gmail.com' &&
+         request.auth.token.email_verified == true)
+      );
+    }
+
+    function isValidAdminMember(data, adminUid) {
+      return data.uid is string && data.uid == adminUid && isValidId(data.uid) &&
+             data.email is string && data.email.size() >= 3 && data.email.size() <= 160 &&
+             data.role == 'ADMIN' &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             (!('updatedAt' in data) || (data.updatedAt is timestamp && data.updatedAt <= request.time));
+    }
+
+    function isValidAdminSecret(data) {
+      return data.provider is string && data.provider.size() >= 2 && data.provider.size() <= 40 &&
+             data.apiKey is string && data.apiKey.size() <= 512 &&
+             data.backendUrl is string && data.backendUrl.size() <= 400 &&
+             data.enabled is bool &&
+             data.updatedByUid is string && data.updatedByUid.size() <= 128 &&
+             data.updatedAtMillis is int && data.updatedAtMillis >= 0 &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidAppConfig(data) {
+      return data.announcementText is string && data.announcementText.size() <= 1000 &&
+             data.maintenanceMode is bool &&
+             data.maintenanceMessage is string && data.maintenanceMessage.size() <= 500 &&
+             data.enableRegistration is bool &&
+             data.enableDeposits is bool &&
+             data.enableWithdrawals is bool &&
+             data.enableNumberBetting is bool &&
+             data.firstDepositBonusAmount is number && data.firstDepositBonusAmount >= 0 && data.firstDepositBonusAmount <= 100000 &&
+             data.minBetAmount is number && data.minBetAmount >= 1 && data.minBetAmount <= 10000 &&
+             data.greenRedMultiplier is number && data.greenRedMultiplier >= 1 && data.greenRedMultiplier <= 20 &&
+             data.violetMultiplier is number && data.violetMultiplier >= 1 && data.violetMultiplier <= 50 &&
+             data.numberMultiplier is number && data.numberMultiplier >= 1 && data.numberMultiplier <= 100 &&
+             data.dragonTigerMultiplier is number && data.dragonTigerMultiplier >= 1 && data.dragonTigerMultiplier <= 20 &&
+             data.platformFeeRate is number && data.platformFeeRate >= 0 && data.platformFeeRate <= 0.5 &&
+             data.gatewayName is string && data.gatewayName.size() <= 120 &&
+             data.gatewayApiUrl is string && data.gatewayApiUrl.size() <= 400 &&
+             data.merchantKeyId is string && data.merchantKeyId.size() <= 120 &&
+             data.merchantUpiPool is string && data.merchantUpiPool.size() <= 500 &&
+             data.merchantName is string && data.merchantName.size() <= 120 &&
+             data.qrLabel is string && data.qrLabel.size() <= 300 &&
+             data.minDeposit is int && data.minDeposit >= 1 &&
+             data.maxDeposit is int && data.maxDeposit >= data.minDeposit &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRoomControl(data) {
+      return data.modeId in ['30sec', '1min'] &&
+             data.controlMode in ['RANDOM', 'MANUAL', 'FULL_CONTROL', 'XIN_LOGIC'] &&
+             data.fallbackMode in ['RANDOM', 'FULL_CONTROL', 'XIN_LOGIC'] &&
+             data.xinPattern in ['TWO_HIGH_FOUR_LOW', 'TWO_LOW_FOUR_HIGH'] &&
+             data.xinAnchorPeriodIndex is int && data.xinAnchorPeriodIndex >= 0 &&
+             data.manualNumber is int && data.manualNumber >= 0 && data.manualNumber <= 9 &&
+             (!('manualTargetPeriodId' in data) || data.manualTargetPeriodId == null || (data.manualTargetPeriodId is string && data.manualTargetPeriodId.size() <= 40)) &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRoundResult(data) {
+      return data.modeId in ['30sec', '1min'] &&
+             data.periodId is string && data.periodId.size() >= 6 && data.periodId.size() <= 40 &&
+             data.winningNumber is int && data.winningNumber >= 0 && data.winningNumber <= 9 &&
+             data.winningColor in ['GREEN', 'VIOLET', 'RED'] &&
+             data.winningSide in ['DRAGON', 'TIGER'] &&
+             data.controlModeUsed in ['RANDOM', 'MANUAL', 'FULL_CONTROL', 'XIN_LOGIC'] &&
+             data.settledAt is timestamp && data.settledAt <= request.time;
+    }
+
+    function isValidUserProfile(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.kwId is string && data.kwId.size() >= 4 && data.kwId.size() <= 32 &&
+             data.countryCode is string && data.countryCode.size() >= 1 && data.countryCode.size() <= 8 &&
+             data.phoneNumber is string && data.phoneNumber.size() <= 20 &&
+             data.email is string && data.email.size() <= 160 &&
+             data.passwordHash is string && data.passwordHash.size() >= 16 && data.passwordHash.size() <= 128 &&
+             data.encryptedPassword is string && data.encryptedPassword.size() <= 512 &&
+             data.secretCode is string && data.secretCode.size() >= 6 && data.secretCode.size() <= 32 &&
+             data.secretCodeHash is string && data.secretCodeHash.size() >= 16 && data.secretCodeHash.size() <= 128 &&
+             data.inviteCode is string && data.inviteCode.size() <= 32 &&
+             data.balance is number && data.balance >= 0 && data.balance <= 100000000 &&
+             data.hasReceivedFirstDepositBonus is bool &&
+             data.blocked is bool &&
+             data.lastLoginAtMillis is int && data.lastLoginAtMillis >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPayoutMethod(data, uid) {
+      return data.userId == uid &&
+             data.type in ['UPI', 'BANK'] &&
+             data.label is string && data.label.size() >= 1 && data.label.size() <= 80 &&
+             data.accountHolder is string && data.accountHolder.size() >= 1 && data.accountHolder.size() <= 100 &&
+             data.accountIdentifier is string && data.accountIdentifier.size() >= 3 && data.accountIdentifier.size() <= 120 &&
+             data.ifscCode is string && data.ifscCode.size() <= 20 &&
+             data.isDefault is bool &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidWalletTransaction(data, uid) {
+      return data.userId == uid &&
+             data.category in ['DEPOSIT', 'BET', 'WIN', 'WITHDRAWAL', 'BONUS', 'ADJUSTMENT'] &&
+             data.title is string && data.title.size() >= 1 && data.title.size() <= 120 &&
+             data.subtitle is string && data.subtitle.size() <= 240 &&
+             data.amount is number && data.amount >= -100000000 && data.amount <= 100000000 &&
+             data.status in ['COMPLETED', 'PENDING_GATEWAY_INTEGRATION', 'SUBMITTED', 'APPROVED', 'REJECTED'] &&
+             data.createdAtMillis is int && data.createdAtMillis >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    function isValidBet(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.periodId is string && data.periodId.size() >= 6 && data.periodId.size() <= 40 &&
+             data.modeId in ['30sec', '1min'] &&
+             data.selectionType in ['COLOR', 'NUMBER', 'SIDE'] &&
+             data.selectionValue is string && data.selectionValue.size() >= 1 && data.selectionValue.size() <= 24 &&
+             data.baseStake is number && data.baseStake >= 1 && data.baseStake <= 10000000 &&
+             data.multiplier is int && data.multiplier >= 1 && data.multiplier <= 100 &&
+             data.totalStake is number && data.totalStake >= 1 && data.totalStake <= 100000000 &&
+             data.status in ['PENDING', 'WON', 'LOST'] &&
+             data.payout is number && data.payout >= 0 && data.payout <= 1000000000 &&
+             data.createdAtMillis is int && data.createdAtMillis >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidDeposit(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.orderId is string && data.orderId.size() >= 4 && data.orderId.size() <= 64 &&
+             data.userPhone is string && data.userPhone.size() <= 40 &&
+             data.amount is number && data.amount >= 1 && data.amount <= 10000000 &&
+             data.utrNumber is string && data.utrNumber.size() <= 64 &&
+             (data.status != 'APPROVED' || data.utrNumber.size() >= 6) &&
+             data.upiIdUsed is string && data.upiIdUsed.size() <= 120 &&
+             data.gatewayName is string && data.gatewayName.size() <= 120 &&
+             data.status in ['PENDING', 'APPROVED', 'REJECTED'] &&
+             data.bonusApplied is number && data.bonusApplied >= 0 && data.bonusApplied <= 100000 &&
+             data.adminNote is string && data.adminNote.size() <= 240 &&
+             data.createdAtMillis is int && data.createdAtMillis >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidWithdrawal(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.userPhone is string && data.userPhone.size() <= 40 &&
+             data.amount is number && data.amount >= 100 && data.amount <= 10000000 &&
+             data.methodType in ['UPI', 'BANK'] &&
+             data.methodLabel is string && data.methodLabel.size() <= 80 &&
+             data.accountHolder is string && data.accountHolder.size() >= 1 && data.accountHolder.size() <= 100 &&
+             data.accountIdentifier is string && data.accountIdentifier.size() >= 3 && data.accountIdentifier.size() <= 120 &&
+             data.ifscCode is string && data.ifscCode.size() <= 20 &&
+             data.status in ['PENDING', 'APPROVED', 'REJECTED'] &&
+             data.adminNote is string && data.adminNote.size() <= 240 &&
+             data.createdAtMillis is int && data.createdAtMillis >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidPasswordReset(data) {
+      return data.userId is string && isValidId(data.userId) &&
+             data.identifier is string && data.identifier.size() >= 3 && data.identifier.size() <= 160 &&
+             data.status in ['PENDING', 'APPROVED', 'REJECTED'] &&
+             data.assignedPassword is string && data.assignedPassword.size() <= 120 &&
+             data.deliveryChannel is string && data.deliveryChannel.size() <= 60 &&
+             data.createdAtMillis is int && data.createdAtMillis >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time &&
+             data.updatedAt is timestamp && data.updatedAt <= request.time;
+    }
+
+    function isValidRoundLog(data) {
+      return data.periodId is string && data.periodId.size() >= 6 && data.periodId.size() <= 40 &&
+             data.modeId in ['30sec', '1min'] &&
+             data.controlModeUsed in ['RANDOM', 'MANUAL', 'FULL_CONTROL', 'XIN_LOGIC'] &&
+             data.winningNumber is int && data.winningNumber >= 0 && data.winningNumber <= 9 &&
+             data.winningColor in ['GREEN', 'VIOLET', 'RED'] &&
+             data.winningSide in ['DRAGON', 'TIGER'] &&
+             data.totalBetsAmount is number && data.totalBetsAmount >= 0 &&
+             data.totalPayoutAmount is number && data.totalPayoutAmount >= 0 &&
+             data.netProfit is number &&
+             data.settledAtMillis is int && data.settledAtMillis >= 0 &&
+             data.createdAt is timestamp && data.createdAt <= request.time;
+    }
+
+    match /admins/{adminUid} {
+      allow get: if isValidId(adminUid) && (isOwner(adminUid) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(adminUid) && isAdmin() &&
+                       incoming().keys().hasAll(['uid', 'email', 'role', 'createdAt']) &&
+                       incoming().keys().hasOnly(['uid', 'email', 'role', 'createdAt', 'updatedAt']) &&
+                       isValidAdminMember(incoming(), adminUid);
+      allow update: if isValidId(adminUid) && isAdmin() &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidAdminMember(incoming(), adminUid);
+      allow delete: if isValidId(adminUid) && isAdmin();
+    }
+
+    match /admin_secrets/{secretId} {
+      allow get, list: if isAdmin();
+      allow create, update: if isValidId(secretId) && isAdmin() &&
+                               incoming().keys().hasAll(['provider','apiKey','backendUrl','enabled','updatedByUid','updatedAtMillis','updatedAt']) &&
+                               incoming().keys().hasOnly(['provider','apiKey','backendUrl','enabled','updatedByUid','updatedAtMillis','updatedAt']) &&
+                               isValidAdminSecret(incoming());
+      allow delete: if false;
+    }
+
+    match /app_config/{configId} {
+      allow get, list: if isSignedIn();
+      allow create: if isValidId(configId) && isAdmin() && isValidAppConfig(incoming());
+      allow update: if isValidId(configId) && isAdmin() && isValidAppConfig(incoming());
+      allow delete: if false;
+    }
+
+    match /room_controls/{modeId} {
+      allow get, list: if isSignedIn();
+      allow create: if isValidId(modeId) && isAdmin() && isValidRoomControl(incoming());
+      allow update: if isValidId(modeId) && isAdmin() && isValidRoomControl(incoming());
+      allow delete: if false;
+    }
+
+    match /round_results/{resultId} {
+      allow get, list: if isSignedIn();
+      allow create, update: if isValidId(resultId) && isAdmin() && isValidRoundResult(incoming());
+      allow delete: if false;
+    }
+
+    match /users/{userId} {
+      allow get: if isValidId(userId) && (isOwner(userId) || isAdmin());
+      allow list: if isAdmin();
+      allow create: if isValidId(userId) && isOwner(userId) &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().keys().hasAll(['userId','kwId','countryCode','phoneNumber','email','passwordHash','encryptedPassword','secretCode','secretCodeHash','inviteCode','balance','hasReceivedFirstDepositBonus','blocked','lastLoginAtMillis','createdAt','updatedAt']) &&
+                       incoming().keys().hasOnly(['userId','kwId','countryCode','phoneNumber','email','passwordHash','encryptedPassword','secretCode','secretCodeHash','inviteCode','balance','hasReceivedFirstDepositBonus','blocked','lastLoginAtMillis','createdAt','updatedAt']) &&
+                       incoming().balance == 0 &&
+                       incoming().hasReceivedFirstDepositBonus == false &&
+                       incoming().blocked == false &&
+                       isValidUserProfile(incoming());
+      allow update: if isValidId(userId) && isSignedIn() &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidUserProfile(incoming()) && (
+                         isAdmin() || (
+                           isOwner(userId) &&
+                           incoming().blocked == existing().blocked &&
+                           incoming().hasReceivedFirstDepositBonus == existing().hasReceivedFirstDepositBonus &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['countryCode','phoneNumber','email','passwordHash','encryptedPassword','secretCode','secretCodeHash','balance','lastLoginAtMillis','updatedAt'])
+                         )
+                       );
+      allow delete: if false;
+
+      match /payout_methods/{methodId} {
+        allow get, list: if isOwner(userId) || isAdmin();
+        allow create: if isValidId(methodId) && (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId','type','label','accountHolder','accountIdentifier','ifscCode','isDefault','createdAt','updatedAt']) &&
+                         incoming().keys().hasOnly(['userId','type','label','accountHolder','accountIdentifier','ifscCode','isDefault','createdAt','updatedAt']) &&
+                         isValidPayoutMethod(incoming(), userId);
+        allow update: if isValidId(methodId) && (isOwner(userId) || isAdmin()) &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidPayoutMethod(incoming(), userId);
+        allow delete: if isValidId(methodId) && (isOwner(userId) || isAdmin());
+      }
+
+      match /transactions/{txId} {
+        allow get, list: if isOwner(userId) || isAdmin();
+        allow create: if isValidId(txId) && (isOwner(userId) || isAdmin()) &&
+                         incoming().keys().hasAll(['userId','category','title','subtitle','amount','status','createdAtMillis','createdAt']) &&
+                         incoming().keys().hasOnly(['userId','category','title','subtitle','amount','status','createdAtMillis','createdAt']) &&
+                         isValidWalletTransaction(incoming(), userId);
+        allow update: if isValidId(txId) && isAdmin() &&
+                         incoming().createdAt == existing().createdAt &&
+                         isValidWalletTransaction(incoming(), userId);
+        allow delete: if false;
+      }
+    }
+
+    match /bets/{betId} {
+      allow get, list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(betId) && isSignedIn() &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().payout == 0 &&
+                       incoming().keys().hasAll(['userId','periodId','modeId','selectionType','selectionValue','baseStake','multiplier','totalStake','status','payout','createdAtMillis','createdAt','updatedAt']) &&
+                       incoming().keys().hasOnly(['userId','periodId','modeId','selectionType','selectionValue','baseStake','multiplier','totalStake','status','payout','createdAtMillis','createdAt','updatedAt']) &&
+                       isValidBet(incoming());
+      allow update: if isValidId(betId) && isSignedIn() &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       isValidBet(incoming()) && (
+                         isAdmin() || (
+                           existing().userId == request.auth.uid &&
+                           existing().status == 'PENDING' &&
+                           incoming().totalStake == existing().totalStake &&
+                           incoming().diff(existing()).affectedKeys().hasOnly(['status','payout','updatedAt'])
+                         )
+                       );
+      allow delete: if false;
+    }
+
+    match /deposits/{depositId} {
+      allow get, list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(depositId) && isSignedIn() &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().bonusApplied == 0 &&
+                       incoming().utrNumber.size() >= 6 &&
+                       incoming().keys().hasAll(['userId','orderId','userPhone','amount','utrNumber','upiIdUsed','gatewayName','status','bonusApplied','adminNote','createdAtMillis','createdAt','updatedAt']) &&
+                       incoming().keys().hasOnly(['userId','orderId','userPhone','amount','utrNumber','upiIdUsed','gatewayName','status','bonusApplied','adminNote','createdAtMillis','createdAt','updatedAt']) &&
+                       isValidDeposit(incoming());
+      allow update: if isValidId(depositId) && isAdmin() &&
+                       existing().status == 'PENDING' &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status','bonusApplied','adminNote','updatedAt']) &&
+                       isValidDeposit(incoming());
+      allow delete: if false;
+    }
+
+    match /withdrawals/{withdrawalId} {
+      allow get, list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(withdrawalId) && isSignedIn() &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().keys().hasAll(['userId','userPhone','amount','methodType','methodLabel','accountHolder','accountIdentifier','ifscCode','status','adminNote','createdAtMillis','createdAt','updatedAt']) &&
+                       incoming().keys().hasOnly(['userId','userPhone','amount','methodType','methodLabel','accountHolder','accountIdentifier','ifscCode','status','adminNote','createdAtMillis','createdAt','updatedAt']) &&
+                       isValidWithdrawal(incoming());
+      allow update: if isValidId(withdrawalId) && isAdmin() &&
+                       existing().status == 'PENDING' &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status','adminNote','updatedAt']) &&
+                       isValidWithdrawal(incoming());
+      allow delete: if false;
+    }
+
+    match /password_resets/{resetId} {
+      allow get, list: if isSignedIn() && (existing().userId == request.auth.uid || isAdmin());
+      allow create: if isValidId(resetId) && isSignedIn() &&
+                       incoming().userId == request.auth.uid &&
+                       incoming().status == 'PENDING' &&
+                       incoming().keys().hasAll(['userId','identifier','status','assignedPassword','deliveryChannel','createdAtMillis','createdAt','updatedAt']) &&
+                       incoming().keys().hasOnly(['userId','identifier','status','assignedPassword','deliveryChannel','createdAtMillis','createdAt','updatedAt']) &&
+                       isValidPasswordReset(incoming());
+      allow update: if isValidId(resetId) && isAdmin() &&
+                       incoming().userId == existing().userId &&
+                       incoming().createdAt == existing().createdAt &&
+                       incoming().diff(existing()).affectedKeys().hasOnly(['status','assignedPassword','deliveryChannel','updatedAt']) &&
+                       isValidPasswordReset(incoming());
+      allow delete: if false;
+    }
+
+    match /round_logs/{logId} {
+      allow get, list: if isAdmin();
+      allow create, update: if isValidId(logId) && isAdmin() &&
+                               incoming().keys().hasAll(['periodId','modeId','controlModeUsed','winningNumber','winningColor','winningSide','totalBetsAmount','totalPayoutAmount','netProfit','settledAtMillis','createdAt']) &&
+                               incoming().keys().hasOnly(['periodId','modeId','controlModeUsed','winningNumber','winningColor','winningSide','totalBetsAmount','totalPayoutAmount','netProfit','settledAtMillis','createdAt']) &&
+                               isValidRoundLog(incoming());
+      allow delete: if false;
+    }
+  }
+}

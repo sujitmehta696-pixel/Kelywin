@@ -1,0 +1,326 @@
+{
+  "entities": {
+    "AdminMember": {
+      "title": "AdminMember",
+      "description": "Authorized Kelywin administrator mapped by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID of the administrator." },
+        "email": { "type": "string", "description": "Verified administrator email address." },
+        "role": { "type": "string", "enum": ["ADMIN"] },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": ["uid", "email", "role", "createdAt"]
+    },
+    "AdminGatewaySecret": {
+      "title": "AdminGatewaySecret",
+      "description": "Admin-only & backend-only payment gateway credentials (never readable by regular users).",
+      "type": "object",
+      "properties": {
+        "provider": { "type": "string", "enum": ["FAMGATEWAY"] },
+        "apiKey": { "type": "string", "description": "FamGateway Merchant Secret API Key managed via Admin APK." },
+        "backendUrl": { "type": "string", "description": "Deployed backend server HTTPS URL." },
+        "enabled": { "type": "boolean" },
+        "updatedByUid": { "type": "string" },
+        "updatedAtMillis": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": ["provider", "apiKey", "backendUrl", "enabled", "updatedByUid", "updatedAtMillis", "updatedAt"]
+    },
+    "AppConfig": {
+      "title": "AppConfig",
+      "description": "Global platform configuration controlled remotely from Kelywin Admin APK.",
+      "type": "object",
+      "properties": {
+        "announcementText": { "type": "string" },
+        "maintenanceMode": { "type": "boolean" },
+        "maintenanceMessage": { "type": "string" },
+        "enableRegistration": { "type": "boolean" },
+        "enableDeposits": { "type": "boolean" },
+        "enableWithdrawals": { "type": "boolean" },
+        "enableNumberBetting": { "type": "boolean" },
+        "firstDepositBonusAmount": { "type": "number" },
+        "minBetAmount": { "type": "number" },
+        "greenRedMultiplier": { "type": "number" },
+        "violetMultiplier": { "type": "number" },
+        "numberMultiplier": { "type": "number" },
+        "dragonTigerMultiplier": { "type": "number" },
+        "platformFeeRate": { "type": "number" },
+        "gatewayName": { "type": "string" },
+        "gatewayApiUrl": { "type": "string" },
+        "merchantKeyId": { "type": "string" },
+        "merchantUpiPool": { "type": "string" },
+        "merchantName": { "type": "string" },
+        "qrLabel": { "type": "string" },
+        "minDeposit": { "type": "integer" },
+        "maxDeposit": { "type": "integer" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": [
+        "announcementText", "maintenanceMode", "maintenanceMessage",
+        "enableRegistration", "enableDeposits", "enableWithdrawals", "enableNumberBetting",
+        "firstDepositBonusAmount", "minBetAmount",
+        "greenRedMultiplier", "violetMultiplier", "numberMultiplier", "dragonTigerMultiplier", "platformFeeRate",
+        "gatewayName", "gatewayApiUrl", "merchantKeyId", "merchantUpiPool", "merchantName", "qrLabel",
+        "minDeposit", "maxDeposit", "updatedAt"
+      ]
+    },
+    "RoomControl": {
+      "title": "RoomControl",
+      "description": "Per-room game control mode including Random, Manual (single-period), Full Control, and XIN Logic Mode.",
+      "type": "object",
+      "properties": {
+        "modeId": { "type": "string", "enum": ["30sec", "1min"] },
+        "controlMode": { "type": "string", "enum": ["RANDOM", "MANUAL", "FULL_CONTROL", "XIN_LOGIC"] },
+        "fallbackMode": { "type": "string", "enum": ["RANDOM", "FULL_CONTROL", "XIN_LOGIC"] },
+        "xinPattern": { "type": "string", "enum": ["TWO_HIGH_FOUR_LOW", "TWO_LOW_FOUR_HIGH"] },
+        "xinAnchorPeriodIndex": { "type": "integer" },
+        "manualNumber": { "type": "integer" },
+        "manualTargetPeriodId": { "type": "string" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": ["modeId", "controlMode", "fallbackMode", "xinPattern", "xinAnchorPeriodIndex", "manualNumber", "updatedAt"]
+    },
+    "RoundResult": {
+      "title": "RoundResult",
+      "description": "Published settled round outcome controlled by Admin or settled deterministically.",
+      "type": "object",
+      "properties": {
+        "modeId": { "type": "string", "enum": ["30sec", "1min"] },
+        "periodId": { "type": "string" },
+        "winningNumber": { "type": "integer" },
+        "winningColor": { "type": "string", "enum": ["GREEN", "VIOLET", "RED"] },
+        "winningSide": { "type": "string", "enum": ["DRAGON", "TIGER"] },
+        "controlModeUsed": { "type": "string", "enum": ["RANDOM", "MANUAL", "FULL_CONTROL", "XIN_LOGIC"] },
+        "settledAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": ["modeId", "periodId", "winningNumber", "winningColor", "winningSide", "controlModeUsed", "settledAt"]
+    },
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "Registered Kelywin user wallet profile isolated by Firebase Auth UID.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "kwId": { "type": "string" },
+        "countryCode": { "type": "string" },
+        "phoneNumber": { "type": "string" },
+        "email": { "type": "string" },
+        "passwordHash": { "type": "string" },
+        "encryptedPassword": { "type": "string" },
+        "secretCode": { "type": "string" },
+        "secretCodeHash": { "type": "string" },
+        "inviteCode": { "type": "string" },
+        "balance": { "type": "number" },
+        "hasReceivedFirstDepositBonus": { "type": "boolean" },
+        "blocked": { "type": "boolean" },
+        "lastLoginAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Server timestamp via FieldValue.serverTimestamp()." }
+      },
+      "required": [
+        "userId", "kwId", "countryCode", "phoneNumber", "email",
+        "passwordHash", "encryptedPassword", "secretCode", "secretCodeHash", "inviteCode",
+        "balance", "hasReceivedFirstDepositBonus", "blocked", "lastLoginAtMillis", "createdAt", "updatedAt"
+      ]
+    },
+    "PayoutMethodDoc": {
+      "title": "PayoutMethodDoc",
+      "description": "User saved UPI or Bank withdrawal details.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "type": { "type": "string", "enum": ["UPI", "BANK"] },
+        "label": { "type": "string" },
+        "accountHolder": { "type": "string" },
+        "accountIdentifier": { "type": "string" },
+        "ifscCode": { "type": "string" },
+        "isDefault": { "type": "boolean" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "type", "label", "accountHolder", "accountIdentifier", "ifscCode", "isDefault", "createdAt", "updatedAt"]
+    },
+    "WalletTransactionDoc": {
+      "title": "WalletTransactionDoc",
+      "description": "Per-user wallet transaction ledger record.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "category": { "type": "string", "enum": ["DEPOSIT", "BET", "WIN", "WITHDRAWAL", "BONUS", "ADJUSTMENT"] },
+        "title": { "type": "string" },
+        "subtitle": { "type": "string" },
+        "amount": { "type": "number" },
+        "status": { "type": "string", "enum": ["COMPLETED", "PENDING_GATEWAY_INTEGRATION", "SUBMITTED", "APPROVED", "REJECTED"] },
+        "createdAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "category", "title", "subtitle", "amount", "status", "createdAtMillis", "createdAt"]
+    },
+    "UserBetDoc": {
+      "title": "UserBetDoc",
+      "description": "Live user bet across Color, Number 0-9, or Dragon/Tiger.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "periodId": { "type": "string" },
+        "modeId": { "type": "string", "enum": ["30sec", "1min"] },
+        "selectionType": { "type": "string", "enum": ["COLOR", "NUMBER", "SIDE"] },
+        "selectionValue": { "type": "string" },
+        "baseStake": { "type": "number" },
+        "multiplier": { "type": "integer" },
+        "totalStake": { "type": "number" },
+        "status": { "type": "string", "enum": ["PENDING", "WON", "LOST"] },
+        "payout": { "type": "number" },
+        "createdAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "periodId", "modeId", "selectionType", "selectionValue",
+        "baseStake", "multiplier", "totalStake", "status", "payout", "createdAtMillis", "createdAt", "updatedAt"
+      ]
+    },
+    "DepositRequestDoc": {
+      "title": "DepositRequestDoc",
+      "description": "Dynamic UPI gateway deposit request queued for Admin verification.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "orderId": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "amount": { "type": "number" },
+        "utrNumber": { "type": "string" },
+        "upiIdUsed": { "type": "string" },
+        "gatewayName": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "bonusApplied": { "type": "number" },
+        "adminNote": { "type": "string" },
+        "createdAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "orderId", "userPhone", "amount", "utrNumber", "upiIdUsed",
+        "gatewayName", "status", "bonusApplied", "adminNote", "createdAtMillis", "createdAt", "updatedAt"
+      ]
+    },
+    "WithdrawalRequestDoc": {
+      "title": "WithdrawalRequestDoc",
+      "description": "User withdrawal request processed by Admin.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userPhone": { "type": "string" },
+        "amount": { "type": "number" },
+        "methodType": { "type": "string", "enum": ["UPI", "BANK"] },
+        "methodLabel": { "type": "string" },
+        "accountHolder": { "type": "string" },
+        "accountIdentifier": { "type": "string" },
+        "ifscCode": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "adminNote": { "type": "string" },
+        "createdAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "userId", "userPhone", "amount", "methodType", "methodLabel", "accountHolder",
+        "accountIdentifier", "ifscCode", "status", "adminNote", "createdAtMillis", "createdAt", "updatedAt"
+      ]
+    },
+    "PasswordResetRequestDoc": {
+      "title": "PasswordResetRequestDoc",
+      "description": "Admin-assisted password reset queue entry.",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "identifier": { "type": "string" },
+        "status": { "type": "string", "enum": ["PENDING", "APPROVED", "REJECTED"] },
+        "assignedPassword": { "type": "string" },
+        "deliveryChannel": { "type": "string" },
+        "createdAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "identifier", "status", "assignedPassword", "deliveryChannel", "createdAtMillis", "createdAt", "updatedAt"]
+    },
+    "RoundLogDoc": {
+      "title": "RoundLogDoc",
+      "description": "Admin round financial summary log.",
+      "type": "object",
+      "properties": {
+        "periodId": { "type": "string" },
+        "modeId": { "type": "string", "enum": ["30sec", "1min"] },
+        "controlModeUsed": { "type": "string", "enum": ["RANDOM", "MANUAL", "FULL_CONTROL", "XIN_LOGIC"] },
+        "winningNumber": { "type": "integer" },
+        "winningColor": { "type": "string", "enum": ["GREEN", "VIOLET", "RED"] },
+        "winningSide": { "type": "string", "enum": ["DRAGON", "TIGER"] },
+        "totalBetsAmount": { "type": "number" },
+        "totalPayoutAmount": { "type": "number" },
+        "netProfit": { "type": "number" },
+        "settledAtMillis": { "type": "integer" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": [
+        "periodId", "modeId", "controlModeUsed", "winningNumber", "winningColor",
+        "winningSide", "totalBetsAmount", "totalPayoutAmount", "netProfit", "settledAtMillis", "createdAt"
+      ]
+    }
+  },
+  "firestore": {
+    "/admins/{adminUid}": {
+      "schema": { "$ref": "#/entities/AdminMember" },
+      "description": "Authorized admin UIDs."
+    },
+    "/admin_secrets/{secretId}": {
+      "schema": { "$ref": "#/entities/AdminGatewaySecret" },
+      "description": "Admin-only gateway secret API keys read by the backend server and Admin APK."
+    },
+    "/app_config/{configId}": {
+      "schema": { "$ref": "#/entities/AppConfig" },
+      "description": "Global platform configuration, maintenance mode, and feature toggles."
+    },
+    "/room_controls/{modeId}": {
+      "schema": { "$ref": "#/entities/RoomControl" },
+      "description": "Per-room game settlement mode (Random, Manual, Full Control, XIN Logic)."
+    },
+    "/round_results/{resultId}": {
+      "schema": { "$ref": "#/entities/RoundResult" },
+      "description": "Published winning round outcomes."
+    },
+    "/users/{userId}": {
+      "schema": { "$ref": "#/entities/UserProfile" },
+      "description": "User wallet, encrypted password recovery, and secret code profile."
+    },
+    "/users/{userId}/payout_methods/{methodId}": {
+      "schema": { "$ref": "#/entities/PayoutMethodDoc" },
+      "description": "User payout methods."
+    },
+    "/users/{userId}/transactions/{txId}": {
+      "schema": { "$ref": "#/entities/WalletTransactionDoc" },
+      "description": "User wallet ledger transactions."
+    },
+    "/bets/{betId}": {
+      "schema": { "$ref": "#/entities/UserBetDoc" },
+      "description": "Live bets scoped per userId and readable by Admin."
+    },
+    "/deposits/{depositId}": {
+      "schema": { "$ref": "#/entities/DepositRequestDoc" },
+      "description": "UPI Gateway deposit verification queue."
+    },
+    "/withdrawals/{withdrawalId}": {
+      "schema": { "$ref": "#/entities/WithdrawalRequestDoc" },
+      "description": "Withdrawal verification queue."
+    },
+    "/password_resets/{resetId}": {
+      "schema": { "$ref": "#/entities/PasswordResetRequestDoc" },
+      "description": "Admin-assisted password reset queue."
+    },
+    "/round_logs/{logId}": {
+      "schema": { "$ref": "#/entities/RoundLogDoc" },
+      "description": "Admin-only round profit/payout logs."
+    }
+  }
+}

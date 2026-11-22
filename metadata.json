@@ -1,0 +1,6 @@
+{
+  "name": "Kelywin",
+  "description": "Kelywin mobile user panel with live 30sec and 1Min prediction rooms, Dragon/Tiger outcomes, wallet ledger, and no-OTP account management.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
